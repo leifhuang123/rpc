@@ -2,11 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "rpc_types.h"
+#include <errno.h>
+#include "rpc_pal.h"
 
 // Database structure to store procedure properties
 struct proc_map_db
@@ -17,7 +19,6 @@ struct proc_map_db
 };
 
 // Database declaration
-#define RPC_PROC_DB_SIZE 100
 static struct proc_map_db proc_db[RPC_PROC_DB_SIZE];
 static int proc_db_index = 0;
 
@@ -28,7 +29,7 @@ bool register_procedure(const char *procedure_name, const int nparams, fp_type f
 {
     if (proc_db_index >= RPC_PROC_DB_SIZE)
     {
-        printf("procedure is full\n");
+        LOG("procedure is full\n");
         return false;
     }
 
@@ -37,7 +38,7 @@ bool register_procedure(const char *procedure_name, const int nparams, fp_type f
     {
         if ((strcmp(proc_db[i].proc_name, procedure_name) == 0) && (nparams == proc_db[i].n_params))
         {
-            printf("procedure already exits\n");
+            LOG("procedure already exits\n");
             return false;
         }
         i++;
@@ -66,7 +67,7 @@ return_type deserialize(unsigned char *buffer)
 
     if (proc_size <= 1)
     {
-        printf("\nProcedure size was zero. Ret not set.\n");
+        LOG("\nProcedure size was zero. Ret not set.\n");
         return ret;
     }
 
@@ -156,7 +157,7 @@ return_type deserialize(unsigned char *buffer)
     }
     else
     {
-        printf("\nCould not find function in database. Ret not set.\n");
+        LOG("\nCould not find function in database. Ret not set.\n");
     }
 
     return ret;
@@ -170,8 +171,8 @@ void launch_server()
     unsigned char buffer[RPC_BUFFER_SIZE];
     int received_size;
 
-    // Creates a UDP socket
-    int sockfd = create_udp_server(RPC_SERVER_PORT);
+    // create a rpc server
+    int sockfd = rpc_create_server(RPC_SERVER_PORT);
 
     for (;;)
     {
@@ -200,4 +201,5 @@ void launch_server()
                 rpc_free(&ret);
         }
     }
+    close(sockfd);
 }

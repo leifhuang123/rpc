@@ -1,13 +1,16 @@
-#ifndef _RPC_TYPES_H
-#define _RPC_TYPES_H
+#ifndef _RPC_PAL_H
+#define _RPC_PAL_H
 
 #include <stdbool.h>
 #include <arpa/inet.h>
+#include <assert.h>
 
-#define RPC_SERVER_PORT 10000
-#define RPC_CLIENT_PORT 10069
-#define RPC_RCVTIMEO_S	3
-#define RPC_BUFFER_SIZE	512
+#define RPC_PROC_DB_SIZE 	100
+#define RPC_SERVER_PORT 	10000
+#define RPC_BUFFER_SIZE		512
+// used for debug
+#define DEBUG 1
+#define ADD_TIMESTAMP 1
 
 /* returnType */
 typedef struct
@@ -31,10 +34,9 @@ typedef struct arg
 typedef return_type (*fp_type)(const int, arg_type *);
 
 /******************************************************************/
-/* extern declarations -- you need to implement these 4 functions */
+/* extern declarations 											  */
 /******************************************************************/
 
-/* The following need to be implemented in the server stub */
 
 /* register_procedure() -- invoked by the app programmer's server code
  * to register a procedure with this server_stub. Note that more than
@@ -64,27 +66,40 @@ extern void launch_server();
  *
  * For each of the nparams parameters, we have two arguments: size of the
  * argument, and a (void *) to the argument. */
-extern return_type make_remote_call(const char *servernameorip,
-									const int serverportnumber,
+extern return_type make_remote_call(int sockfd, 
+									const char *server_nameorip,
+									const int server_port,
 									const char *procedure_name,
 									const int nparams,
 									...);
 
-// create rpc client socket
-extern int rpc_client_init();
+// socket related below
+extern int rpc_create_server(int server_port);
 
-// close rpc client socket
-extern void rpc_client_close();
+extern int rpc_create_client(int client_port, int recv_timeout_s);
 
-// free return_type after make_remote_call
-extern void rpc_free(return_type *rt);
-
-extern int create_udp_server(int port);
+extern void rpc_close(int sockfd);
 
 extern int fill_sockaddr_in(struct sockaddr_in *addr, const char *nameorip, int port);
+
+// malloc/free return_type
+extern void rpc_malloc(return_type *rt, size_t size);
+
+extern void rpc_free(return_type *rt);
 
 extern unsigned char *int_serialize(unsigned char *buffer, int value);
 
 extern void print_array(const char *sender, const char *buf, int size);
+
+extern void print(const char *sender, const char *fmt, ...);
+
+// used for debug
+#ifdef DEBUG
+#define LOG(fmt, ...) print(__func__, fmt, ##__VA_ARGS__)
+#define LOGA(sender, buf, size) print_array(sender, buf, size)
+#else
+#define LOG(fmt, ...)
+#define LOGA(sender, buf, size)
+#endif
 
 #endif

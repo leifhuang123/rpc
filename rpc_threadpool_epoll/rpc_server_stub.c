@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -179,44 +180,34 @@ static void worker(void *arg)
     int epollfd = in_fds->epollfd;
     LOG("new worker on fd %d\n", connfd);
 
-    unsigned char buf[RPC_BUFFER_SIZE];
-
-    while (1)
+    unsigned char buf[RPC_BUFFER_SIZE] = {0};
+    int ret = recvall(connfd, buf, RPC_BUFFER_SIZE, 0);
+    if (ret < 0)
     {
-        memset(buf, 0, sizeof(buf));
-        int ret = recv(connfd, buf, RPC_BUFFER_SIZE, 0);
-        if (ret < 0)
-        {
-            if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
-            {
-                epoll_reset_oneshot(epollfd, connfd);
-                break;
-            }
-        }
-        else if (ret == 0)
-        {
-            close(connfd);
-            LOG("connection on fd %d closed\n", connfd);
-            break;
-        }
-        else
-        {
-            return_type ret;
+        close(connfd);
+        LOG("connection on fd %d closed\n", connfd);
+    }
+    else if (ret == 0)
+    {
+        epoll_reset_oneshot(epollfd, connfd);
+    }
+    else
+    {
+        return_type ret;
 
-            ret = deserialize(buf);
+        ret = deserialize(buf);
 
-            // Process and send result back to client
-            unsigned char *tmp = int_serialize(buf, ret.return_size);
-            if (ret.return_size > 0)
-                memcpy(tmp, ret.return_val, ret.return_size);
+        // Process and send result back to client
+        unsigned char *tmp = int_serialize(buf, ret.return_size);
+        if (ret.return_size > 0)
+            memcpy(tmp, ret.return_val, ret.return_size);
 
-            sendall(connfd, buf, ret.return_size + sizeof(int), 0);
-            LOGA("send", buf, ret.return_size + sizeof(int));
+        sendall(connfd, buf, ret.return_size + sizeof(int), 0);
+        LOGA("send", buf, ret.return_size + sizeof(int));
 
-            // Notice: 可能是因为写时复制，所以在send之后才能释放，否则对方只收到return_size而没有return_val
-            if (ret.need_free)
-                rpc_free(&ret);
-        }
+        // Notice: 可能是因为写时复制，所以在send之后才能释放，否则对方只收到return_size而没有return_val
+        if (ret.need_free)
+            rpc_free(&ret);
     }
     free(in_fds);
     LOG("end worker on fd %d\n", connfd);
@@ -225,7 +216,7 @@ static void worker(void *arg)
 /**
  * Main loop that keeps server running and processing incoming procedure calls.
  */
-#define MAX_EVENT_NUMBER    1024
+#define MAX_EVENT_NUMBER 1024
 
 void launch_server(int thread_number, int listen_number)
 {
@@ -255,7 +246,7 @@ void launch_server(int thread_number, int listen_number)
             if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) ||
                 (events[i].events & EPOLLRDHUP))
             {
-                LOG("close connection on fd %d\n", sockfd);  //在这里关闭socket，避免再次触发EPOLLIN而进入线程池
+                LOG("close connection on fd %d\n", sockfd); //在这里关闭socket，避免再次触发EPOLLIN而进入线程池
                 close(sockfd);
                 continue;
             }
@@ -280,7 +271,14 @@ void launch_server(int thread_number, int listen_number)
                 fds_t *new_fds = (fds_t *)malloc(sizeof(fds_t));
                 new_fds->epollfd = epollfd;
                 new_fds->connfd = sockfd;
-                threadpool_append(pool, worker, new_fds);
+                if (threadpool_append(pool, worker, new_fds) != NULL)
+                    LOG("now work(%d) to do\n", pool->work_num);
+                else
+                {
+                    LOG("threadpool_append failed\n");
+                    free(new_fds);
+                    epoll_reset_oneshot(epollfd, sockfd);
+                }
             }
             else
             {

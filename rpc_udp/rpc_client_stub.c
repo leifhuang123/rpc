@@ -6,36 +6,15 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/time.h>
-#include <errno.h>
-#include "rpc_types.h"
+#include "rpc_pal.h"
 
-static int sockfd = -1;
-
-int rpc_client_init()
-{
-    // Create client socket and bind address to it
-    sockfd = create_udp_server(RPC_CLIENT_PORT);
-    struct timeval timeout;
-    timeout.tv_sec = RPC_RCVTIMEO_S;
-    timeout.tv_usec = 0;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0)
-        perror("setsockopt error");
-
-    return sockfd;
-}
-
-void rpc_client_close()
-{
-    if (sockfd >= 0)
-        close(sockfd);
-}
 
 /**
  * Makes a remote procedure call on the specific server.
  */
-return_type make_remote_call(const char *servernameorip,
-                             const int serverportnumber,
+return_type make_remote_call(int sockfd,
+                             const char *server_nameorip,
+                             const int server_port,
                              const char *procedure_name,
                              const int nparams, ...)
 {
@@ -45,7 +24,7 @@ return_type make_remote_call(const char *servernameorip,
 
     // Create server address
     struct sockaddr_in server_addr;
-    fill_sockaddr_in(&server_addr, servernameorip, serverportnumber);
+    fill_sockaddr_in(&server_addr, server_nameorip, server_port);
 
     /**
      * Pack data into buffer
@@ -113,15 +92,15 @@ return_type make_remote_call(const char *servernameorip,
                                     0, (struct sockaddr *)NULL, (socklen_t *)NULL);
 
     // Here we don't take recving from other hosts(not the expected server) into account.
+    // use udp connect?
     if (receive_length > 0)
     {
-        // print_array("receive", buffer, receive_length);
+        LOGA("receive", buffer, receive_length);
         rt.return_size = *(int *)buffer;
         if (rt.return_size > 0)
         {
-            rt.return_val = (void *)malloc(rt.return_size);
+            rpc_malloc(&rt, rt.return_size);
             memcpy(rt.return_val, buffer + sizeof(int), rt.return_size);
-            rt.need_free = true;
         }
     }
     

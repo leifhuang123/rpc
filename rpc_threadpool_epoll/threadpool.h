@@ -1,8 +1,10 @@
-#ifndef THREAD_POOL_H
-#define THREAD_POOL_H
+#ifndef THREADPOOL_H
+#define THREADPOOL_H
 
 #include <stdbool.h>
 #include <pthread.h>
+
+//#define THREADPOOL_WAIT
 
 typedef void (*threadpool_process)(void *);
 

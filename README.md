@@ -1,7 +1,9 @@
 # project
 
-参考：
+- rpc_udp: a simple rpc demo over udp
+- rpc_threadpool_epoll: a simple rpc demo over tcp/epoll/threadpool
 
-https://github.com/masroorhasan/RPC.git
+# reference
 
-https://github.com/xiaobing94/coroutine.git
+- https://github.com/masroorhasan/RPC.git
+- https://github.com/xiaobing94/coroutine.git

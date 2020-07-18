@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 #include <assert.h>
 #include "threadpool.h"
 
@@ -14,6 +16,10 @@ static void *worker(void *arg)
         while (pool->work_num == 0)
         {
             pthread_cond_wait(&pool->cond, &pool->mutex);
+            if (pool->shutdown){
+                pthread_mutex_unlock(&pool->mutex);
+                return NULL;
+            }
         }
         pool->work_num--;
         work_t *pwork = pool->head;
@@ -73,6 +79,19 @@ void threadpool_destroy(threadpool_t *pool)
         return;
 
     pool->shutdown = true;
+    int i;
+#ifdef THREADPOOL_WAIT
+    pthread_cond_broadcast(&pool->cond);
+    for (i = 0; i < pool->thread_num; ++i)
+    {
+        pthread_join(pool->ptid[i], NULL);
+    }
+#else
+    for (i = 0; i < pool->thread_num; ++i)
+    {
+        pthread_cancel(pool->ptid[i]);
+    }
+#endif
     free(pool->ptid);
 
     work_t *p = NULL;
@@ -94,7 +113,13 @@ work_t *threadpool_append(threadpool_t *pool, threadpool_process process, void *
     new_work->process = process;
     new_work->arg = arg;
 
-    pthread_mutex_lock(&pool->mutex);
+    if (pthread_mutex_trylock(&pool->mutex) != 0)
+    {
+        free(new_work);
+        printf("pthread_mutex_trylock: %s\n", strerror(errno));
+        return NULL;
+    }
+
     work_t *p = pool->head;
     if (p == NULL)
     {
